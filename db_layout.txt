@@ -1,0 +1,4 @@
+summary:champion TEXT, category TEXT, games INTEGER, wins INTEGER, kills INTEGER, deaths INTEGER, assists INTEGER, tckp15 INTEGER, tck INTEGER, PRIMARY KEY (champion, category)
+matches:match_id TEXT NOT NULL PRIMARY KEY, duration TEXT
+teams:match_id TEXT NOT NULL, team_id TEXT NOT NULL PRIMARY KEY, side TEXT, win TEXT, player_1_id TEXT, player_2_id TEXT, player_3_id TEXT, player_4_id TEXT, player_5_id TEXT, bans TEXT, baron_kills INTEGER, dragon_kills INTEGER, inhibitor_kills INTEGER, tower_kills INTEGER, first_blood INTEGER, first_tower INTEGER, FOREIGN KEY (match_id) REFERENCES matches (match_id)
+summs:team_id TEXT NOT NULL, player_id TEXT NOT NULL, kills INTEGER, deaths INTEGER, assists INTEGER, cs INTEGER, FOREIGN KEY (team_id) REFERENCES teams (team_id)
