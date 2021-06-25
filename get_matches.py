@@ -58,36 +58,43 @@ def new_matches(user):
 def scan_timeline(summ, timeline, id_map):
     TIME_LIMIT = 15 * 60
     CHAMP_MAP = ["TOP_LANE", "JUNGLE", "MID_LANE", "DUO_CARRY", "DUO_SUPPORT"]
-    death_count = [0] * 5
-    for event in timeline.events:
-        if event.timestamp.total_seconds < TIME_LIMIT:
+    death_count = [0] * 6
+    for event in timeline.champion_deaths:
+        if event.timestamp.total_seconds() >= TIME_LIMIT:
             break
-        if event.type == "CHAMPION_KILL" and event.victim_id == summ.id:
-            summ = id_map[event.killer_id]
-            role = summ.lane.value
-            role = role if role != "BOT_LANE" else summ.role.value
-            death_count[CHAMP_MAP.index(role)] += 1
-    print(death_count)
+        for id in [event.killer_id] + event.assisting_participants:
+            killer = id_map[id]
+            # How the hell is killer.lane null sometimes???
+            role = killer.lane.value if killer.lane is not None else "UNKNOWN"
+            role = role if role != "BOT_LANE" else killer.role.value
+            if role in CHAMP_MAP:
+                death_count[CHAMP_MAP.index(role)] += 1
+            else:
+                death_count[-1] += 1
+    print(death_count, summ.summoner.name)
+    return death_count
 
 
 def enter_summ(cur, team_id, summ, category, seconds, id_map):
-    scan_timeline(summ, summ.timeline, id_map)
+    cipd_15 = scan_timeline(summ, summ.timeline, id_map)
     stats = summ.stats
     # Enter individual champ
-    role = summ.lane.value
+    role = summ.lane.value if summ.lane is not None else "UNKNOWN"
     role = role if role != "BOT_LANE" else summ.role.value
     params = (team_id, category, summ.summoner.id, summ.champion.name, role,
                 stats.win, stats.kda, stats.kills, stats.deaths, 
                 stats.assists, stats.total_minions_killed, seconds, stats.gold_earned, 
                 stats.damage_dealt_to_objectives, stats.damage_dealt_to_turrets, 
                 stats.total_damage_dealt_to_champions, stats.total_damage_dealt, 
-                stats.time_CCing_others)
-    cur.execute("INSERT INTO summs VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", 
+                stats.time_CCing_others, sum(cipd_15), *cipd_15) # Little gacky deref -- putting list #s as params
+    cur.execute("INSERT INTO summs VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?," + 
+                    "?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", 
                 params)
     # Now add to summary statistics
     cur.execute(f"SELECT * FROM summary WHERE category = ? AND champ = ?", (category, summ.champion.name))
     res = cur.fetchone()
-    qry_str = "INSERT OR REPLACE INTO summary VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+    qry_str = ("INSERT OR REPLACE INTO summary VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?," +
+                    " ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
     params = (params[1], params[3], 1) + params[5:]
     if res is not None: 
         params = (category, summ.champion.name) + tuple([params[i] + res[i] for i in range(2, len(params))])
@@ -135,7 +142,7 @@ def enter_matches(conn, matches, has_tgt):
         # id_map[0] is just used so I don't have to subtract one each time from the id list
         id_map = ["SHOULD NOT BE SELECTED"] + [""] * 10
         for part in match.participants:
-            id_map[part.id] = part
+            id_map[part.id] = part 
         seconds = match.duration.seconds
         # If the match isn't remade or ended by any weird stuff w/ people leaving pre-15
         if seconds >= 15 * 60:
